@@ -19,7 +19,7 @@ tests/unit|integration|e2e/  scripts/ docs/
 - Backend: FastAPI + SQLAlchemy[asyncio]+asyncpg + Alembic + Redis + Celery (`apps/api/pyproject.toml`)
 - Frontend: Next.js 14 + Tailwind + Recharts (`apps/dashboard/package.json:14`)
 - Tooling: `docker compose up` (postgres, redis, api :8000, worker, dashboard :3000), `uvicorn app.main:app --reload --app-dir apps/api`, `alembic upgrade head` (from `apps/api`), `celery -A app.celery_app worker --app-dir apps/worker`, `npm run dev|build` in `apps/dashboard`, `pytest tests/unit tests/integration -q`, `ruff check apps/ packages/`
-- Env: `.env.example` → `.env` (`DATABASE_URL`, `REDIS_URL`, `JEV_API_KEY` — mock fallback if unset)
+- Env: `.env.example` → `.env` (`DATABASE_URL`, `REDIS_URL`, `JEV_API_KEY` — required, no mocking; `JEV_API_KEY` must be set or Jev calls raise `RuntimeError`)
 
 ## API Conventions (from spec — follow exactly)
 - Versioned JSON-only: `Content-Type: application/json`, routes `/api/v1/*`
@@ -45,8 +45,8 @@ tests/unit|integration|e2e/  scripts/ docs/
 - Attribution graph is the differentiator: store per-component weights `{planner: 0.14, retriever: 0.91, generator: 0.31}`, not just a single label.
 
 ## Workflow Gotchas
-- No build/test/lint/typecheck configured yet. When you add them, document exact commands here and prefer executable config over prose.
-- Mock Jev in integration/E2E tests (`API → DB`, `API → Jev`, `Worker → DB`); don't require live Jev key for CI.
+- Env: `JEV_API_KEY` is required — `app/services/jev_service.py:25` raises `RuntimeError` if missing, and `app/core/config.py:38` warns at import. No mock fallback.
+- Tests that hit Jev require real key (`tests/unit/test_jev_live.py:1`); unit smoke tests (`tests/integration/test_api_smoke.py:1`) work without DB/Jev.
 - Phases are sequential: trace collection → failure detection → normalization → Jev engine → graph → recommendations → dashboard → Who&When/Who&When Pro benchmarking. Don't skip normalization when implementing attribution.
 - Benchmark target is `Who&When Pro` (12k+ labeled trajectories, metrics: Who/When/Error F1/Joint Accuracy) — keep schemas compatible.
 - After editing `AGENTS.md` verify `docker compose config --quiet` and `pytest tests/unit tests/integration -q` still pass; don't break the happy path.

@@ -1,4 +1,4 @@
-from packages.trace_parser.jev_trace_parser.normalizer import normalize_trace
+from jev_trace_parser.normalizer import normalize_trace
 
 
 def test_normalize():

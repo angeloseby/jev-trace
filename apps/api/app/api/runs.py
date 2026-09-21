@@ -82,9 +82,4 @@ async def complete_run(run_id: uuid.UUID, payload: RunComplete, session: AsyncSe
     return {"success": True, "data": {"id": str(run.id), "status": run.status}}
 
 
-@router.get("/{run_id}/steps", response_model=CursorPage)
-async def list_steps_stub(run_id: uuid.UUID):
-    # Delegated to steps router for full impl; keep alias for spec compat
-    from fastapi.responses import JSONResponse
 
-    return JSONResponse({"items": [], "next_cursor": None, "has_more": False})

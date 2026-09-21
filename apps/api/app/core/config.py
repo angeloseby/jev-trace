@@ -1,4 +1,22 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+
+def _find_env() -> str | None:
+    # Search upward from this file and cwd for .env (supports running from apps/api)
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parents[3] / ".env",  # apps/api/app/core -> repo root
+        Path(__file__).resolve().parents[4] / ".env",
+        Path(".env"),
+        Path("../.env"),
+        Path("../../.env"),
+    ]
+    for p in candidates:
+        if p.is_file():
+            return str(p)
+    return ".env"
 
 
 class Settings(BaseSettings):
@@ -16,14 +34,24 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/2"
 
     jev_api_key: str | None = None
-    jev_base_url: str = "https://api.jev.com"
+    jev_base_url: str = "https://api.typesafe.ai"
     jev_systemone_path: str = "/v1/systemone"
 
     otel_exporter_otlp_endpoint: str | None = None
 
     class Config:
-        env_file = ".env"
+        env_file = _find_env()
         extra = "ignore"
 
 
 settings = Settings()
+
+# Fail fast if JEV_API_KEY is not set — no mocking allowed for Jev
+if not settings.jev_api_key:
+    import os as _os
+
+    if not _os.getenv("JEV_API_KEY"):
+        # Don't crash at import in tests that patch env, but warn loudly
+        import warnings as _w
+
+        _w.warn("JEV_API_KEY not set — Jev calls will fail (mocking disabled)", UserWarning)

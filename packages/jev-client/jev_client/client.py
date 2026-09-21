@@ -10,7 +10,7 @@ class JevClient:
 
     async def systemone(self, state: dict, questions: dict) -> dict:
         if not self.api_key:
-            raise RuntimeError("JEV_API_KEY not set — use mock path in jev_service")
+            raise RuntimeError("JEV_API_KEY not set — Jev is required (mocking disabled)")
         url = f"{self.base_url}/v1/systemone"
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         async with httpx.AsyncClient(timeout=20) as client:

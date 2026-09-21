@@ -15,7 +15,12 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-config.set_main_option("sqlalchemy.url", settings.sync_database_url)
+# Prefer env var / settings, but allow override for Docker vs host
+try:
+    sync_url = settings.sync_database_url
+except Exception:
+    sync_url = "postgresql://jev:jev@localhost:5432/jevtrace"
+config.set_main_option("sqlalchemy.url", sync_url)
 
 
 def run_migrations_offline() -> None:
