@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import analytics, attributions, auth, internal, recommendations, runs, steps
+from app.api import analytics, attributions, auth, internal, otlp, recommendations, runs, steps
 
 app = FastAPI(title="JevTrace API", version="0.1.0")
 
@@ -55,6 +55,33 @@ async def _envelope_errors(request: Request, exc: Exception):
     )
 
 
+# Pydantic validation → envelope with valid components hint
+from fastapi.exceptions import RequestValidationError
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_envelope(request: Request, exc: RequestValidationError):
+    # Surface valid components for step errors
+    detail = exc.errors()
+    msg = str(detail[0].get("msg", "")) if detail else str(exc)
+    return JSONResponse(
+        status_code=422,
+        content={
+            "success": False,
+            "data": None,
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": msg,
+                "details": {
+                    "errors": detail,
+                    "valid_components": ["planner", "retriever", "tool_router", "memory", "generator", "verifier", "external_api"],
+                    "hints": {"llm": "generator", "search": "retriever", "tool": "tool_router", "api": "external_api", "chain": "planner"},
+                },
+            },
+        },
+    )
+
+
 # Register routers under /api/v1
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(runs.router, prefix="/api/v1")
@@ -62,4 +89,5 @@ app.include_router(steps.router, prefix="/api/v1")
 app.include_router(attributions.router, prefix="/api/v1")
 app.include_router(recommendations.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
+app.include_router(otlp.router, prefix="/api/v1")
 app.include_router(internal.router)

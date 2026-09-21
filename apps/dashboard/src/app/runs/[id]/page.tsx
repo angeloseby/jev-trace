@@ -53,7 +53,7 @@ export default function RunDetail() {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section className="rounded-xl border bg-white p-4">
           <h2 className="font-semibold">Trace Explorer — {steps?.items?.length||0} steps</h2>
-          <p className="text-xs text-zinc-500">`GET /runs/{id}/steps` • cursor pagination • input/output/latency</p>
+          <p className="text-xs text-zinc-500">`GET /runs/{id}/steps` • cursor pagination • input/output/latency • valid components: planner · retriever · tool_router · memory · generator · verifier · external_api (aliases: llm→generator, search→retriever, tool→tool_router, api→external_api)</p>
           <div className="mt-3 max-h-96 overflow-auto rounded border">
             <table className="w-full text-xs"><thead className="bg-zinc-50"><tr><th className="px-2 py-1 text-left">#</th><th className="px-2 py-1 text-left">Component</th><th className="px-2 py-1">Status</th><th className="px-2 py-1">Latency</th></tr></thead>
             <tbody>
