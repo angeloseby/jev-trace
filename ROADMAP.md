@@ -2,10 +2,11 @@
 
 Saved 2026-09-21. Source of truth for what remains after `v0.1.0` (`62adb51`).
 
-## P0 — Publish (blocked on credentials)
+## P0 — Publish
 
-- [ ] **PyPI upload** — `packages/tracer/dist/*` is built, `twine check` passes.
-  Run from `packages/tracer`: `python -m twine upload dist/*` (needs PyPI API token).
+- [x] **PyPI upload** — done 2026-09-21. `jev-trace 0.1.0` live at
+  https://pypi.org/project/jev-trace/0.1.0/ (`twine check` passed, `twine upload` succeeded).
+  Install: `pip install jev-trace` / `pip install jev-trace[langchain]`.
 
 ## P1 — Research
 
