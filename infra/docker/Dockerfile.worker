@@ -1,0 +1,8 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY apps/worker/pyproject.toml ./
+RUN pip install --no-cache-dir celery redis sqlalchemy httpx
+COPY apps/worker/ ./
+COPY packages/ /packages/
+RUN pip install --no-cache-dir /packages/schemas /packages/jev-client /packages/trace-parser
+CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info"]

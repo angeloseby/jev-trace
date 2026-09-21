@@ -1,0 +1,10 @@
+[project]
+name = "jev-trace-parser"
+version = "0.1.0"
+description = "Trace normalizer — converts raw steps into Jev state"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

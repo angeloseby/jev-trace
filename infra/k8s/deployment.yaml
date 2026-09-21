@@ -1,0 +1,14 @@
+# Placeholder K8s manifests — fill when deploying to managed K8s
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: jevtrace-api }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: jevtrace-api } }
+  template:
+    metadata: { labels: { app: jevtrace-api } }
+    spec:
+      containers:
+        - name: api
+          image: jevtrace-api:latest
+          ports: [{ containerPort: 8000 }]

@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "jev-trace"
+version = "0.1.0"
+description = "JevTrace — Agent Failure Intelligence Platform"
+authors = ["JevTrace Team"]
+readme = "README.md"
+packages = [{include = "app", from = "apps/api"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.23"
+httpx = "^0.27"
+ruff = "^0.4"
+mypy = "^1.10"
+black = "^24.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
