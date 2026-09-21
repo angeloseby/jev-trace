@@ -10,9 +10,10 @@ Saved 2026-09-21. Source of truth for what remains after `v0.1.0` (`62adb51`).
 
 ## P1 — Research
 
-- [ ] **Who&When Pro evaluation** — `scripts/benchmark_whowhen.py` harness exists,
-  but the 12k-trajectory dataset was never downloaded. Download dataset, run
-  benchmark, publish Who/When/Error-F1/Joint numbers to `docs/benchmark-results.md`.
+- [x] **Who&When Pro evaluation** — done 2026-09-21. Text split (6,257 traces)
+  downloaded; stratified sample n=84 → Who 0.500 / When 0.580 /
+  Error acc 0.179 (macro-F1 0.105) / Joint 0.091. See `docs/benchmark-results.md`.
+  Raw predictions gitignored under `data/whowhen_pro/`.
 
 ## P2 — Product
 

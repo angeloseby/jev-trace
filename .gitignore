@@ -19,3 +19,5 @@ postgres-data/
 coverage.xml
 htmlcov/
 next-env.d.ts
+data/
+whowhen_files.txt
