@@ -2,27 +2,24 @@
 
 ## Source of Truth
 - `project-plan.md` is the complete spec (architecture, data model, API v1, Jev question sets, 7-phase roadmap). Read the relevant section before coding; don't reinvent contracts.
-- Repo is greenfield: only `project-plan.md` exists. No manifests, lockfiles, Docker, DB schema, or CI yet. No git repo initialized. Verify before assuming any tooling exists.
+- Monorepo is initialized — see layout below. Trust `docker-compose.yml`, `apps/*/pyproject.toml`, `apps/dashboard/package.json`, `.github/workflows/ci.yml` as executable truth over docs if they conflict.
 
-## Planned Architecture (don't invent a different layout)
-Intended monorepo from plan Phase 0:
+## Monorepo Layout (do not rename/move these)
 ```
-jev-trace/
-├── apps/api/        # FastAPI
-├── apps/dashboard/  # Next.js + Tailwind + Recharts
-├── apps/worker/     # Celery worker
-├── packages/attribution|trace-parser|jev-client|schemas|analytics/
-├── infra/docker|terraform|k8s/
-├── tests/ docs/ scripts/
+apps/api/        # FastAPI — app/main.py, app/api/*.py, app/schemas/*, app/services/jev_service.py, app/db/models.py, alembic/
+apps/dashboard/  # Next.js 14 + Tailwind + Recharts — src/app/*, src/lib/api.ts
+apps/worker/     # Celery — app/celery_app.py
+packages/        # jev-client, trace-parser, attribution, schemas, analytics (hatchling)
+infra/docker/    # Dockerfile.api/.worker/.dashboard
+infra/terraform/ infra/k8s/  # placeholders
+tests/unit|integration|e2e/  scripts/ docs/
 ```
-- App entrypoint will be `apps/api` with routers `api/auth.py`, `runs.py`, `steps.py`, `attributions.py`, `recommendations.py`, `analytics.py`; schemas in `app/schemas/`; services in `app/services/jev_service.py` etc.
-- Keep API versioned under `/api/v1` — resource-oriented (`/runs`, `/steps`, `/attributions`, `/recommendations`, `/auth`).
 
-## Stack (planned, not yet installed)
-- Backend: FastAPI + SQLAlchemy + PostgreSQL + Redis + Celery
-- Frontend: Next.js (TypeScript) + Tailwind + Recharts
-- Observability: OpenTelemetry + Prometheus + Grafana
-- AI: Jev only
+## Stack & Commands
+- Backend: FastAPI + SQLAlchemy[asyncio]+asyncpg + Alembic + Redis + Celery (`apps/api/pyproject.toml`)
+- Frontend: Next.js 14 + Tailwind + Recharts (`apps/dashboard/package.json:14`)
+- Tooling: `docker compose up` (postgres, redis, api :8000, worker, dashboard :3000), `uvicorn app.main:app --reload --app-dir apps/api`, `alembic upgrade head` (from `apps/api`), `celery -A app.celery_app worker --app-dir apps/worker`, `npm run dev|build` in `apps/dashboard`, `pytest tests/unit tests/integration -q`, `ruff check apps/ packages/`
+- Env: `.env.example` → `.env` (`DATABASE_URL`, `REDIS_URL`, `JEV_API_KEY` — mock fallback if unset)
 
 ## API Conventions (from spec — follow exactly)
 - Versioned JSON-only: `Content-Type: application/json`, routes `/api/v1/*`
@@ -52,3 +49,4 @@ jev-trace/
 - Mock Jev in integration/E2E tests (`API → DB`, `API → Jev`, `Worker → DB`); don't require live Jev key for CI.
 - Phases are sequential: trace collection → failure detection → normalization → Jev engine → graph → recommendations → dashboard → Who&When/Who&When Pro benchmarking. Don't skip normalization when implementing attribution.
 - Benchmark target is `Who&When Pro` (12k+ labeled trajectories, metrics: Who/When/Error F1/Joint Accuracy) — keep schemas compatible.
+- After editing `AGENTS.md` verify `docker compose config --quiet` and `pytest tests/unit tests/integration -q` still pass; don't break the happy path.
