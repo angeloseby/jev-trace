@@ -32,7 +32,22 @@ def _decode_cursor(cursor: str | None) -> uuid.UUID | None:
 
 @router.post("", response_model=RunOut, status_code=status.HTTP_201_CREATED)
 async def create_run(payload: RunCreate, session: AsyncSession = Depends(get_session)):
+    # Use project_id from header X-Project-Id if provided, else default
+    from fastapi import Request
+
+    # project handling is optional for backward compat
     run = Run(task_name=payload.task_name, status="running")
+    # Try to honor X-Project-Id if caller sets it (dashboard project switcher)
+    # We inspect request via dependency injection alternative: use header directly in endpoint would require Request param,
+    # so we fallback to default project id if not provided via payload extension
+    project_id = getattr(payload, "project_id", None)
+    if project_id:
+        try:
+            import uuid as _uuid
+
+            run.project_id = _uuid.UUID(str(project_id))
+        except Exception:
+            pass
     session.add(run)
     await session.commit()
     await session.refresh(run)

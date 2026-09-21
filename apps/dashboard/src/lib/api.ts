@@ -13,7 +13,22 @@ export type Attribution = { run_id: string; responsible_component: string; compo
 export type Graph = { nodes: { id: string; weight: number }[]; edges: { source: string; target: string }[] };
 export type Recommendation = { recommendation: string; confidence: number };
 
-export async function fetchRuns(params?: { status?: string; limit?: number; cursor?: string }) {
+export type Project = { id: string; name: string; created_at: string };
+export type ApiKey = { id: string; project_id: string; public_key: string; name: string | null; created_at: string };
+export type ApiKeyWithSecret = ApiKey & { secret_key: string };
+
+export async function fetchProjects() { return j<Project[]>(`${API_BASE}/api/v1/projects`); }
+export async function createProject(name: string) { return j<Project>(`${API_BASE}/api/v1/projects`, { method: "POST", body: JSON.stringify({ name }) }); }
+export async function fetchApiKeys(projectId: string) { return j<ApiKey[]>(`${API_BASE}/api/v1/projects/${projectId}/api-keys`); }
+export async function createApiKey(projectId: string, name?: string) { return j<ApiKeyWithSecret>(`${API_BASE}/api/v1/projects/${projectId}/api-keys`, { method: "POST", body: JSON.stringify({ name }) }); }
+export async function ingestBatch(batch: any[], publicKey?: string, secretKey?: string) {
+  const headers: Record<string,string> = {};
+  if (publicKey && secretKey) { const tok = btoa(`${publicKey}:${secretKey}`); headers["Authorization"] = `Basic ${tok}`; }
+  else if (publicKey) headers["X-Api-Key"] = publicKey;
+  return j(`${API_BASE}/api/v1/ingest`, { method: "POST", body: JSON.stringify({ batch }), headers });
+}
+
+export async function fetchRuns(params?: { status?: string; limit?: number; cursor?: string; project_id?: string; q?: string }) {
   const q = new URLSearchParams(params as any).toString();
   return j<CursorPage<Run>>(`${API_BASE}/api/v1/runs${q ? `?${q}` : ""}`);
 }

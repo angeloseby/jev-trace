@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import analytics, attributions, auth, internal, otlp, recommendations, runs, steps
+from app.api import analytics, attributions, auth, ingest, internal, otlp, projects, recommendations, runs, steps
 
 app = FastAPI(title="JevTrace API", version="0.1.0")
 
@@ -84,10 +84,12 @@ async def _validation_envelope(request: Request, exc: RequestValidationError):
 
 # Register routers under /api/v1
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(projects.router, prefix="/api/v1")
 app.include_router(runs.router, prefix="/api/v1")
 app.include_router(steps.router, prefix="/api/v1")
 app.include_router(attributions.router, prefix="/api/v1")
 app.include_router(recommendations.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(otlp.router, prefix="/api/v1")
+app.include_router(ingest.router, prefix="/api")
 app.include_router(internal.router)

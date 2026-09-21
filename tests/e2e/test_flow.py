@@ -35,6 +35,8 @@ async def test_e2e_attribution():
 
         # 4. Analyze via Jev (parallel Choice/Score/Noul)
         a = await client.post(f"/api/v1/runs/{run_id}/analyze")
+        if a.status_code == 500 and ("503" in a.text or "no healthy upstream" in a.text):
+            pytest.skip(f"Jev upstream unavailable (503): {a.text[:200]}")
         assert a.status_code in (200, 202), a.text
 
         # 5. Poll attribution (sync path returns immediately, worker path needs poll)

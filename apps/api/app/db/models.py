@@ -12,16 +12,42 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    runs: Mapped[list["Run"]] = relationship(back_populates="project")
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    public_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    secret_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    project: Mapped[Project] = relationship(back_populates="api_keys")
+
+
 class Run(Base):
     __tablename__ = "runs"
 
     id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     task_name: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_steps: Mapped[int] = mapped_column(Integer, default=0)
 
+    project: Mapped[Project | None] = relationship(back_populates="runs")
     steps: Mapped[list["Step"]] = relationship(back_populates="run", cascade="all, delete-orphan")
     attribution: Mapped["Attribution | None"] = relationship(back_populates="run", uselist=False)
     recommendations: Mapped[list["Recommendation"]] = relationship(back_populates="run")
@@ -33,8 +59,12 @@ class Step(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("runs.id", ondelete="CASCADE"))
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("steps.id", ondelete="SET NULL"), nullable=True)
     step_number: Mapped[int] = mapped_column(Integer, nullable=False)
     component: Mapped[str] = mapped_column(String(50), nullable=False)
+    observation_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # span/generation/tool
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    usage: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {input_tokens, output_tokens, cost}
     input: Mapped[dict] = mapped_column("input", JSON, default=dict)
     output: Mapped[dict] = mapped_column("output", JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="success")
@@ -42,6 +72,7 @@ class Step(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     run: Mapped[Run] = relationship(back_populates="steps")
+    parent: Mapped["Step | None"] = relationship(remote_side="Step.id")
 
 
 class Attribution(Base):

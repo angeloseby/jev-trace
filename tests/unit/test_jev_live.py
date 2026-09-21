@@ -14,9 +14,14 @@ async def test_jev_live_analyze():
             pytest.skip("JEV_API_KEY/TYPESAFE_API_KEY not set — real Jev required via SDK")
     from app.services.jev_service import analyze_trace
 
-    result = await analyze_trace(
-        {"task": "Find GDP of Brazil", "steps": [{"component": "retriever", "status": "failed"}]}
-    )
+    try:
+        result = await analyze_trace(
+            {"task": "Find GDP of Brazil", "steps": [{"component": "retriever", "status": "failed"}]}
+        )
+    except RuntimeError as e:
+        if "503" in str(e) or "no healthy upstream" in str(e):
+            pytest.skip(f"Jev upstream unavailable (503): {e}")
+        raise
     assert "responsible_component" in result
     assert "failure_category" in result
     assert "severity" in result
