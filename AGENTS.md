@@ -16,10 +16,11 @@ tests/unit|integration|e2e/  scripts/ docs/
 ```
 
 ## Stack & Commands
-- Backend: FastAPI + SQLAlchemy[asyncio]+asyncpg + Alembic + Redis + Celery (`apps/api/pyproject.toml`)
+- Backend: FastAPI + SQLAlchemy[asyncio]+asyncpg + Alembic + Redis + Celery + `typesafe-sdk` (`apps/api/pyproject.toml:1`)
 - Frontend: Next.js 14 + Tailwind + Recharts (`apps/dashboard/package.json:14`)
 - Tooling: `docker compose up` (postgres, redis, api :8000, worker, dashboard :3000), `uvicorn app.main:app --reload --app-dir apps/api`, `alembic upgrade head` (from `apps/api`), `celery -A app.celery_app worker --app-dir apps/worker`, `npm run dev|build` in `apps/dashboard`, `pytest tests/unit tests/integration -q`, `ruff check apps/ packages/`
-- Env: `.env.example` → `.env` (`DATABASE_URL`, `REDIS_URL`, `JEV_API_KEY` — required, no mocking; `JEV_API_KEY` must be set or Jev calls raise `RuntimeError`)
+- Env: `.env.example` → `.env` (`DATABASE_URL`, `REDIS_URL`, `JEV_API_KEY`/`TYPESAFE_API_KEY` — required, no mocking; must be set or Jev calls raise `RuntimeError`)
+- TypeSafe skill: `.agents/skills/typesafe-ai/SKILL.md:1` installed (via `npx skills add typesafe-ai/skills --skill typesafe-ai --agent opencode`). Read `https://docs.typesafe.ai/llms.txt` and use `AsyncTypeSafeClient` + typed `Choice`/`Score`/`Noul` (`app/services/jev_service.py:1`). Docs are source of truth — don’t reimplement with raw httpx.
 
 ## API Conventions (from spec — follow exactly)
 - Versioned JSON-only: `Content-Type: application/json`, routes `/api/v1/*`

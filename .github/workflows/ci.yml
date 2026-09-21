@@ -7,12 +7,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install ruff mypy pytest pytest-asyncio httpx fastapi pydantic pydantic-settings sqlalchemy asyncpg alembic python-jose passlib redis
+      - run: pip install ruff mypy pytest pytest-asyncio httpx fastapi pydantic pydantic-settings sqlalchemy asyncpg alembic python-jose passlib redis typesafe-sdk
       - run: cp .env.example .env
       - run: ruff check apps/ packages/
       - run: pytest tests/unit tests/integration -q
         env:
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          TYPESAFE_API_KEY: ${{ secrets.JEV_API_KEY }}
   build:
     runs-on: ubuntu-latest
     needs: lint-test

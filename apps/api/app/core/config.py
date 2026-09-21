@@ -34,8 +34,10 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/2"
 
     jev_api_key: str | None = None
+    typesafe_api_key: str | None = None
     jev_base_url: str = "https://api.typesafe.ai"
     jev_systemone_path: str = "/v1/systemone"
+    typesafe_base_url: str | None = None
 
     otel_exporter_otlp_endpoint: str | None = None
 
@@ -46,12 +48,12 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Fail fast if JEV_API_KEY is not set — no mocking allowed for Jev
-if not settings.jev_api_key:
+# Fail fast if Jev key is not set — no mocking allowed for Jev
+# Accept JEV_API_KEY or TYPESAFE_API_KEY (SDK default)
+if not settings.jev_api_key and not settings.typesafe_api_key:
     import os as _os
 
-    if not _os.getenv("JEV_API_KEY"):
-        # Don't crash at import in tests that patch env, but warn loudly
+    if not _os.getenv("JEV_API_KEY") and not _os.getenv("TYPESAFE_API_KEY"):
         import warnings as _w
 
-        _w.warn("JEV_API_KEY not set — Jev calls will fail (mocking disabled)", UserWarning)
+        _w.warn("JEV_API_KEY/TYPESAFE_API_KEY not set — Jev calls will fail (mocking disabled)", UserWarning)

@@ -1,13 +1,11 @@
-"""Jev attribution service — single POST /v1/systemone with parallel Choice/Score/Noul.
+"""Jev attribution service — System One via TypeSafe SDK (async).
 
+Uses AsyncTypeSafeClient + typed Choice/Score/Noul primitives.
 Dashboard must never call Jev directly; use POST /internal/jev/analyze which hits this service.
-Real Jev required — no mock fallback. JEV_API_KEY must be set.
-Target host is api.typesafe.ai (key apikey_*) per Jev Agent docs; also supports jev-agent.com with jv_live_ keys.
+Real Jev required — no mock fallback. JEV_API_KEY (or TYPESAFE_API_KEY) must be set.
 """
 import os
 from typing import Any
-
-import httpx
 
 from app.core.config import settings
 
@@ -30,18 +28,23 @@ REPAIR_ACTIONS = [
     "enable_citations",
     "human_review",
 ]
-# Use Jev-preferred model; configurable via JEV_MODEL env
-DEFAULT_MODEL = os.getenv("JEV_MODEL", "jev-latest")
+DEFAULT_MODEL = os.getenv("JEV_MODEL") or os.getenv("TYPESAFE_DEFAULT_MODEL") or "jev-latest"
 
 
 def _require_api_key() -> str:
-    key = settings.jev_api_key or os.getenv("JEV_API_KEY")
-    if not key or not key.strip():
+    # Accept both JEV_* and TYPESAFE_* env names; SDK prefers TYPESAFE_API_KEY
+    key = (
+        settings.jev_api_key
+        or settings.typesafe_api_key  # type: ignore[attr-defined]
+        or os.getenv("JEV_API_KEY")
+        or os.getenv("TYPESAFE_API_KEY")
+    )
+    if not key or not str(key).strip():
         raise RuntimeError(
-            "JEV_API_KEY not set. Set it in .env (see .env.example) or environment. "
+            "JEV_API_KEY (or TYPESAFE_API_KEY) not set. Set it in .env (see .env.example) or environment. "
             "Mocking is disabled — Jev is required."
         )
-    return key.strip()
+    return str(key).strip()
 
 
 def _choice_criteria() -> dict:
@@ -80,124 +83,109 @@ def _repair_criteria() -> dict:
 
 
 async def analyze_trace(normalized_trace: dict) -> dict[str, Any]:
-    """Call Jev /v1/systemone with parallel questions. No mock fallback."""
+    """Call TypeSafe SystemOne with parallel questions via SDK. No mock fallback."""
     api_key = _require_api_key()
 
-    url = f"{settings.jev_base_url.rstrip('/')}{settings.jev_systemone_path}"
-    payload = {
-        "model": DEFAULT_MODEL,
-        "state": normalized_trace,
-        "questions": {
-            "responsible_component": {
-                "type": "choice",
-                "instructions": "Which agent component is most responsible for the failure?",
-                "criteria": _choice_criteria(),
-            },
-            "failure_category": {
-                "type": "choice",
-                "instructions": "What is the failure category of this run?",
-                "criteria": _category_criteria(),
-            },
-            "severity": {
-                "type": "score",
-                "instructions": "How severe is this failure for the end user?",
-                "criteria": ["Low", "Medium", "High", "Critical"],
-            },
-            **{
-                f"{c}_caused_failure": {
-                    "type": "noul",
-                    "instructions": f"Did the {c} component cause or significantly contribute to the failure?",
-                    "criteria": {
-                        "true": f"{c} caused or contributed to failure",
-                        "false": f"{c} did not cause failure",
-                    },
-                }
-                for c in COMPONENTS
-            },
-        },
-    }
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, json=payload, headers=headers)
+    # Lazy import so module imports even if SDK not installed (tests that mock will skip)
+    from typesafe_sdk import AsyncTypeSafeClient, Choice, Noul, Score
+
+    # Ensure SDK sees the key even if it was provided as JEV_API_KEY
+    os.environ["TYPESAFE_API_KEY"] = api_key
+    if settings.jev_base_url and settings.jev_base_url != "https://api.typesafe.ai":
+        os.environ["TYPESAFE_BASE_URL"] = settings.jev_base_url
+
+    async with AsyncTypeSafeClient(api_key=api_key, model=DEFAULT_MODEL) as client:
         try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            detail = resp.text[:2000]
-            raise RuntimeError(f"Jev /v1/systemone failed {resp.status_code}: {detail}") from exc
-        data = resp.json()
+            result = await client.system_one(
+                state=normalized_trace,
+                questions={
+                    "responsible_component": Choice(
+                        instructions="Which agent component is most responsible for the failure?",
+                        criteria=_choice_criteria(),
+                    ),
+                    "failure_category": Choice(
+                        instructions="What is the failure category of this run?",
+                        criteria=_category_criteria(),
+                    ),
+                    "severity": Score(
+                        instructions="How severe is this failure for the end user?",
+                        criteria=["Low", "Medium", "High", "Critical"],
+                    ),
+                    **{
+                        f"{c}_caused_failure": Noul(
+                            instructions=f"Did the {c} component cause or significantly contribute to the failure?",
+                            criteria={
+                                "true": f"{c} caused or contributed to failure",
+                                "false": f"{c} did not cause failure",
+                            },
+                        )
+                        for c in COMPONENTS
+                    },
+                },
+            )
+        except Exception as exc:
+            # Surface SDK exceptions as RuntimeError for API layer
+            raise RuntimeError(f"Jev SystemOne failed: {exc}") from exc
 
-    # Real Jev nests under answers; keep compat with flat shape if ever returned
-    answers = data.get("answers", data)
-
-    rc = answers.get("responsible_component", {})
-    fc = answers.get("failure_category", {})
-    sev = answers.get("severity", {})
-    # Noul answers: {"type":"noul","noul":0.97}
+    # SDK typed response: .choices, .scores, .nouls, .answers, .model, .usage
+    rc = result.choices.get("responsible_component")
+    fc = result.choices.get("failure_category")
+    sev = result.scores.get("severity")
     causal: dict[str, float] = {}
     for c in COMPONENTS:
         key = f"{c}_caused_failure"
-        val = answers.get(key)
-        if isinstance(val, dict) and "noul" in val:
-            causal[c] = float(val["noul"])
-        elif isinstance(val, (int, float)):
-            causal[c] = float(val)
+        ans = result.nouls.get(key)
+        if ans is not None:
+            causal[c] = float(ans.noul)
 
-    # failure_step not part of Jev output — heuristic from trace (first failed step)
+    # failure_step not part of Jev output — heuristic from trace
     failure_step = 1
     steps = normalized_trace.get("steps", []) if isinstance(normalized_trace, dict) else []
     for idx, s in enumerate(steps, start=1):
         if isinstance(s, dict) and s.get("status") == "failed":
             failure_step = idx
             break
-    # If Jev ever returns it inside answers, prefer that
-    if isinstance(answers.get("failure_step"), dict):
-        try:
-            failure_step = int(answers["failure_step"].get("choice", failure_step))
-        except Exception:
-            pass
-    elif isinstance(answers.get("failure_step"), int):
-        failure_step = answers["failure_step"]
 
     return {
-        "responsible_component": rc.get("choice") or rc.get("value") or "retriever",
-        "component_confidence": float(rc.get("confidence", 0.8)),
+        "responsible_component": (rc.choice if rc else "retriever"),
+        "component_confidence": float(rc.confidence if rc else 0.8),
         "failure_step": failure_step,
-        "failure_category": fc.get("choice") or fc.get("value") or "retrieval_error",
-        "category_confidence": float(fc.get("confidence", 0.8)),
-        "severity": float(sev.get("score", sev.get("value", 0.8)) if isinstance(sev, dict) else float(sev)),
+        "failure_category": (fc.choice if fc else "retrieval_error"),
+        "category_confidence": float(fc.confidence if fc else 0.8),
+        "severity": float(sev.score if sev else 0.8),
         "causal_graph": causal or {c: 0.1 for c in COMPONENTS},
-        "raw_model": data.get("model"),
-        "usage": data.get("usage"),
+        "raw_model": result.model,
+        "usage": {"input_tokens": result.usage.input_tokens, "output_tokens": result.usage.output_tokens}
+        if result.usage
+        else None,
     }
 
 
 async def recommend_repair(ctx: dict) -> list[dict]:
-    """Second Jev call for repair recommendation. No mock fallback."""
+    """Second Jev call for repair recommendation via SDK. No mock fallback."""
     api_key = _require_api_key()
 
-    url = f"{settings.jev_base_url.rstrip('/')}{settings.jev_systemone_path}"
-    payload = {
-        "model": DEFAULT_MODEL,
-        "state": ctx,
-        "questions": {
-            "repair": {
-                "type": "choice",
-                "instructions": "Which remediation best fixes this failure?",
-                "criteria": _repair_criteria(),
-            }
-        },
-    }
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, json=payload, headers=headers)
+    from typesafe_sdk import AsyncTypeSafeClient, Choice
+
+    os.environ["TYPESAFE_API_KEY"] = api_key
+    if settings.jev_base_url and settings.jev_base_url != "https://api.typesafe.ai":
+        os.environ["TYPESAFE_BASE_URL"] = settings.jev_base_url
+
+    async with AsyncTypeSafeClient(api_key=api_key, model=DEFAULT_MODEL) as client:
         try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            detail = resp.text[:2000]
-            raise RuntimeError(f"Jev repair call failed {resp.status_code}: {detail}") from exc
-        data = resp.json()
-    answers = data.get("answers", data)
-    choice = answers.get("repair", {})
-    action = choice.get("choice") or choice.get("value") or "human_review"
-    conf = float(choice.get("confidence", 0.7))
+            result = await client.system_one(
+                state=ctx,
+                questions={
+                    "repair": Choice(
+                        instructions="Which remediation best fixes this failure?",
+                        criteria=_repair_criteria(),
+                    )
+                },
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Jev repair call failed: {exc}") from exc
+
+    ans = result.choices.get("repair")
+    action = ans.choice if ans else "human_review"
+    conf = float(ans.confidence if ans else 0.7)
     return [{"action": action, "confidence": conf}]

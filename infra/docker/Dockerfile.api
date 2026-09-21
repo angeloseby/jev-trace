@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 WORKDIR /app
 COPY apps/api/pyproject.toml ./
-RUN pip install --no-cache-dir fastapi uvicorn[standard] pydantic pydantic-settings sqlalchemy[asyncio] asyncpg alembic redis celery python-jose[cryptography] passlib[bcrypt] httpx python-multipart opentelemetry-api opentelemetry-sdk
+RUN pip install --no-cache-dir fastapi uvicorn[standard] pydantic pydantic-settings sqlalchemy[asyncio] asyncpg alembic redis celery python-jose[cryptography] passlib[bcrypt] httpx python-multipart opentelemetry-api opentelemetry-sdk typesafe-sdk
 COPY apps/api/ ./
 COPY packages/ /packages/
 RUN pip install --no-cache-dir /packages/schemas /packages/jev-client /packages/trace-parser /packages/attribution /packages/analytics
