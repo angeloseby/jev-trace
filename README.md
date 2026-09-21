@@ -1,6 +1,11 @@
 # JevTrace — Agent Failure Intelligence Platform
 
+[![PyPI version](https://img.shields.io/pypi/v/jev-trace.svg)](https://pypi.org/project/jev-trace/0.1.0/)
+[![Python](https://img.shields.io/pypi/pyversions/jev-trace.svg)](https://pypi.org/project/jev-trace/0.1.0/)
+
 LangSmith + Datadog + Jev. Collects multi-agent traces (manual, LangChain, or OpenTelemetry), runs them through Jev's `Choice`/`Score`/`Noul` (`POST /v1/systemone` via `typesafe-sdk`) in parallel, and surfaces root cause, decisive step, severity, and repair recommendations.
+
+> `jev-trace 0.1.0` is **live on PyPI** — `pip install jev-trace` works out of the box, no local build needed.
 
 ## 3-line integration — like Langfuse
 
@@ -58,7 +63,7 @@ celery -A app.celery_app worker --loglevel=info --app-dir apps/worker
 | Route | Purpose |
 |---|---|
 | `POST /api/v1/auth/login` | JWT login (demo `angelo@example.com`/`secret`; `REQUIRE_AUTH=false` by default) |
-| `POST /api/v1/projects` / `POST /projects/{id}/api-keys` | Multi-tenant projects & `jt_pub_/jt_sec_` keys |
+| `POST /api/v1/projects` / `POST /api/v1/projects/{id}/api-keys` | Multi-tenant projects & `jt_pub_/jt_sec_` keys |
 | `POST /api/v1/runs` | Create run `{task_name}` → `201 {id, project_id}` |
 | `POST /api/v1/runs/{id}/steps` | Add step `{step_number, component: planner|retriever|tool_router|memory|generator|verifier|external_api (aliases: llm→generator etc), status, input, output, latency_ms}` |
 | `POST /api/v1/runs/{id}/complete` | End run `{status: failed|completed}` → auto `failures` row |
@@ -93,6 +98,7 @@ tests/           unit (jev mock/live, normalizer) | integration (api→DB, proje
 ## Docs
 
 - Full spec: `project-plan.md` (API v1, Jev question sets, roadmap)
+- Pending work: `ROADMAP.md` (PyPI ✅, Who&When Pro eval, replay engine, prod infra)
 - Integration: `docs/integration.md` (3-line, LangChain, OTel, manual REST, publishing)
 - Agent guide: `AGENTS.md`
 - Benchmark: `scripts/benchmark_whowhen.py --input data/whowhen_pro.jsonl` (Who/When/Error F1/Joint)
