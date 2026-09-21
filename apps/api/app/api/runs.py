@@ -73,11 +73,23 @@ async def get_run(run_id: uuid.UUID, session: AsyncSession = Depends(get_session
 
 @router.post("/{run_id}/complete")
 async def complete_run(run_id: uuid.UUID, payload: RunComplete, session: AsyncSession = Depends(get_session)):
+    from app.db.models import Failure
+
     run = await session.get(Run, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     run.status = payload.status.value
     run.ended_at = datetime.now(timezone.utc)
+    # Auto-create failure row for analytics & detection parity (Phase 2)
+    if payload.status.value == "failed":
+        existing = await session.execute(select(Failure).where(Failure.run_id == run_id))
+        if not existing.scalar_one_or_none():
+            session.add(Failure(run_id=run_id, failure_detected=True, reason="run marked failed", severity_score=0.8))
+    elif payload.status.value == "completed":
+        existing = await session.execute(select(Failure).where(Failure.run_id == run_id))
+        f = existing.scalar_one_or_none()
+        if f:
+            f.failure_detected = False
     await session.commit()
     return {"success": True, "data": {"id": str(run.id), "status": run.status}}
 

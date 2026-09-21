@@ -15,12 +15,17 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-# Prefer env var / settings, but allow override for Docker vs host
+# Use sync URL for offline, async URL for online (psycopg2 is sync, asyncpg is async)
 try:
     sync_url = settings.sync_database_url
+    async_url = settings.database_url
 except Exception:
     sync_url = "postgresql://jev:jev@localhost:5432/jevtrace"
+    async_url = "postgresql+asyncpg://jev:jev@localhost:5432/jevtrace"
+# alembic.ini offline uses sync_url; online async needs async_url
 config.set_main_option("sqlalchemy.url", sync_url)
+# store async url for online
+config.set_main_option("sqlalchemy.async_url", async_url)
 
 
 def run_migrations_offline() -> None:
@@ -37,11 +42,11 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations():
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Build async engine from async_url explicitly
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    async_url = config.get_main_option("sqlalchemy.async_url")
+    connectable = create_async_engine(async_url, poolclass=pool.NullPool)
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()

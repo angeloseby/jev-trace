@@ -1,12 +1,13 @@
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Attribution, Run, Step
+from app.db.models import Attribution, Failure, Run, Step
 from app.db.session import get_session
-from app.schemas.attribution import AnalyzeResponse, AttributionOut, GraphOut, GraphNode, GraphEdge
+from app.schemas.attribution import AnalyzeResponse, AttributionOut, GraphOut, GraphEdge, GraphNode
 from app.services import jev_service
 
 router = APIRouter(tags=["attributions"])
@@ -26,6 +27,26 @@ async def analyze_run(run_id: uuid.UUID, session: AsyncSession = Depends(get_ses
         "steps": [{"component": s.component, "status": s.status} for s in steps],
     }
 
+    # Prefer async worker if available, with sync fallback (no Redis → still works)
+    use_worker = os.getenv("USE_WORKER", "false").lower() == "true"
+    jev_result: dict | None = None
+    if use_worker:
+        try:
+            from app.worker_bridge import enqueue_analyze
+
+            task = enqueue_analyze(str(run_id))
+            # Return 202 with task id; attribution will be available after worker completes
+            # For now return accepted; client can poll GET /attribution
+            return AnalyzeResponse(
+                run_id=run_id,
+                responsible_component={"name": "pending", "confidence": 0.0},
+                failure_step={"step_number": 1, "confidence": 0.0},
+                failure_category={"name": "pending", "confidence": 0.0},
+                severity=0.0,
+                causal_graph=None,
+            )
+        except Exception:
+            pass  # fallback to sync
     jev_result = await jev_service.analyze_trace(normalized)
 
     # Persist attribution
@@ -51,6 +72,10 @@ async def analyze_run(run_id: uuid.UUID, session: AsyncSession = Depends(get_ses
         attr.category_confidence = jev_result["category_confidence"]
         attr.severity = jev_result["severity"]
         attr.causal_graph = jev_result.get("causal_graph")
+    # Ensure failures row for analytics parity
+    f_res = await session.execute(select(Failure).where(Failure.run_id == run_id))
+    if not f_res.scalar_one_or_none():
+        session.add(Failure(run_id=run_id, failure_detected=True, reason=jev_result["failure_category"], severity_score=jev_result["severity"]))
     await session.commit()
 
     return AnalyzeResponse(

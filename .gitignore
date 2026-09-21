@@ -18,3 +18,4 @@ node_modules/
 postgres-data/
 coverage.xml
 htmlcov/
+next-env.d.ts

@@ -1,6 +1,8 @@
+import base64
+import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,15 +35,40 @@ async def add_step(run_id: uuid.UUID, payload: StepCreate, session: AsyncSession
     return {"id": str(step.id)}
 
 
+def _encode_step_cursor(step_number: int, sid: str) -> str:
+    return base64.urlsafe_b64encode(json.dumps({"n": step_number, "id": sid}).encode()).decode()
+
+
+def _decode_step_cursor(cursor: str | None) -> int | None:
+    if not cursor:
+        return None
+    try:
+        return int(json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())["n"])
+    except Exception:
+        return None
+
+
 @router.get("/runs/{run_id}/steps", response_model=CursorPage[StepOut])
-async def list_steps(run_id: uuid.UUID, limit: int = 50, cursor: str | None = None, session: AsyncSession = Depends(get_session)):
+async def list_steps(
+    run_id: uuid.UUID,
+    limit: int = Query(50, ge=1, le=100),
+    cursor: str | None = None,
+    session: AsyncSession = Depends(get_session),
+):
     run = await session.get(Run, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    q = select(Step).where(Step.run_id == run_id).order_by(Step.step_number.asc()).limit(limit)
+    cur_n = _decode_step_cursor(cursor)
+    q = select(Step).where(Step.run_id == run_id).order_by(Step.step_number.asc())
+    if cur_n is not None:
+        q = q.where(Step.step_number > cur_n)
+    q = q.limit(limit + 1)
     result = await session.execute(q)
-    items = list(result.scalars().all())
-    return CursorPage[StepOut](items=items, next_cursor=None, has_more=False)
+    rows = list(result.scalars().all())
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = _encode_step_cursor(items[-1].step_number, str(items[-1].id)) if has_more and items else None
+    return CursorPage[StepOut](items=items, next_cursor=next_cursor, has_more=has_more)
 
 
 @router.get("/steps/{step_id}", response_model=StepOut)
