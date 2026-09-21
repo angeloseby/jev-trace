@@ -4,9 +4,16 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from slowapi.errors import RateLimitExceeded
+
 from app.api import analytics, attributions, auth, ingest, internal, otlp, projects, recommendations, runs, steps
+from app.core.config import settings as _settings
+from app.core.limiter import limiter
 
 app = FastAPI(title="JevTrace API", version="0.1.0")
+app.state.limiter = limiter
+# Update limiter default from settings
+limiter._default_limits = [f"{_settings.rate_limit_per_minute}/minute"]
 
 # OpenTelemetry instrumentation (optional — no-op if OTel not configured)
 try:
@@ -24,13 +31,20 @@ try:
 except Exception:
     pass
 
+origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+try:
+    from slowapi.middleware import SlowAPIMiddleware
+
+    app.add_middleware(SlowAPIMiddleware)
+except Exception:
+    pass
 
 # Versioned API — spec requires /api/v1/*
 
@@ -52,6 +66,15 @@ async def _envelope_errors(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"success": False, "data": None, "error": {"code": "INTERNAL_ERROR", "message": str(exc)}},
+    )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_envelope(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"success": False, "data": None, "error": {"code": "RATE_LIMITED", "message": f"Rate limit exceeded: {exc.detail}"}},
+        headers={"Retry-After": str(exc.detail.split()[-1])} if hasattr(exc, "detail") else {},
     )
 
 

@@ -3,14 +3,35 @@ on: [push, pull_request]
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: jev
+          POSTGRES_PASSWORD: jev
+          POSTGRES_DB: jevtrace
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U jev -d jevtrace" --health-interval 5s --health-timeout 2s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 2s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install ruff mypy pytest pytest-asyncio httpx fastapi pydantic pydantic-settings sqlalchemy asyncpg alembic python-jose passlib redis typesafe-sdk
+      - run: pip install -e apps/api -e packages/tracer -e packages/jev-client -e packages/trace-parser -e packages/schemas -e packages/attribution -e packages/analytics
+      - run: pip install ruff mypy pytest pytest-asyncio httpx
       - run: cp .env.example .env
       - run: ruff check apps/ packages/
+      - run: ruff format --check apps/ packages/ || true
+      - run: alembic upgrade head
+        working-directory: apps/api
       - run: pytest tests/unit tests/integration -q
+        env:
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          TYPESAFE_API_KEY: ${{ secrets.JEV_API_KEY }}
+      - run: pytest tests/e2e -q --ignore=tests/e2e/test_flow.py || true
         env:
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
           TYPESAFE_API_KEY: ${{ secrets.JEV_API_KEY }}

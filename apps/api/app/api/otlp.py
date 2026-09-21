@@ -17,10 +17,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import limiter
 from app.db.models import Run, Step
 from app.db.session import get_session
 
@@ -73,6 +74,7 @@ def _trace_id_to_uuid(trace_id: str) -> uuid.UUID:
 
 
 @router.post("/traces")
+@limiter.limit("60/minute")
 async def receive_traces(request: Request, session: AsyncSession = Depends(get_session)):
     try:
         body = await request.json()

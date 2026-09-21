@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     typesafe_base_url: str | None = None
 
     otel_exporter_otlp_endpoint: str | None = None
+    cors_origins: str = "http://localhost:3000,http://localhost:8000"
+    require_auth: bool = False
+    rate_limit_per_minute: int = 60
 
     class Config:
         env_file = _find_env()
@@ -57,3 +60,9 @@ if not settings.jev_api_key and not settings.typesafe_api_key:
         import warnings as _w
 
         _w.warn("JEV_API_KEY/TYPESAFE_API_KEY not set — Jev calls will fail (mocking disabled)", UserWarning)
+
+# Validate secret in production
+import os as _os2
+
+if _os2.getenv("ENV", "development") == "production" and settings.secret_key == "change-me-in-production":
+    raise RuntimeError("SECRET_KEY must be set in production (ENV=production)")

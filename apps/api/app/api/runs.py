@@ -4,10 +4,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import limiter
 from app.db.models import Run
 from app.db.session import get_session
 from app.schemas.common import CursorPage
@@ -16,22 +17,24 @@ from app.schemas.run import RunComplete, RunCreate, RunOut
 router = APIRouter(prefix="/runs", tags=["runs"])
 
 
-def _encode_cursor(run_id: uuid.UUID) -> str:
-    return base64.urlsafe_b64encode(json.dumps({"id": str(run_id)}).encode()).decode()
+def _encode_cursor(run: Run) -> str:
+    return base64.urlsafe_b64encode(json.dumps({"id": str(run.id), "ts": run.started_at.isoformat() if run.started_at else ""}).encode()).decode()
 
 
-def _decode_cursor(cursor: str | None) -> uuid.UUID | None:
+def _decode_cursor(cursor: str | None) -> tuple[datetime | None, uuid.UUID | None]:
     if not cursor:
-        return None
+        return None, None
     try:
         data = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
-        return uuid.UUID(data["id"])
+        ts = datetime.fromisoformat(data["ts"]) if data.get("ts") else None
+        return ts, uuid.UUID(data["id"])
     except Exception:
-        return None
+        return None, None
 
 
 @router.post("", response_model=RunOut, status_code=status.HTTP_201_CREATED)
-async def create_run(payload: RunCreate, session: AsyncSession = Depends(get_session)):
+@limiter.limit("30/minute")
+async def create_run(request: Request, payload: RunCreate, session: AsyncSession = Depends(get_session)):
     # Use project_id from header X-Project-Id if provided, else default
     from fastapi import Request
 
@@ -61,20 +64,20 @@ async def list_runs(
     cursor: str | None = None,
     session: AsyncSession = Depends(get_session),
 ):
-    q = select(Run).order_by(Run.started_at.desc(), Run.id.desc()).limit(limit + 1)
+    cur_ts, cur_id = _decode_cursor(cursor)
+    # Composite cursor: (started_at, id) for stable pagination
+    base = select(Run).order_by(Run.started_at.desc(), Run.id.desc())
     if status_filter:
-        q = q.where(Run.status == status_filter)
-    cur_id = _decode_cursor(cursor)
-    if cur_id:
-        # cursor pagination: fetch after the cursor id
-        q = select(Run).where(Run.id < cur_id).order_by(Run.started_at.desc(), Run.id.desc()).limit(limit + 1)
-        if status_filter:
-            q = q.where(Run.status == status_filter)
+        base = base.where(Run.status == status_filter)
+    if cur_ts and cur_id:
+        # tuple comparison for cursor
+        base = base.where((Run.started_at < cur_ts) | ((Run.started_at == cur_ts) & (Run.id < cur_id)))
+    q = base.limit(limit + 1)
     result = await session.execute(q)
     rows = list(result.scalars().all())
     has_more = len(rows) > limit
     items = rows[:limit]
-    next_cursor = _encode_cursor(items[-1].id) if has_more and items else None
+    next_cursor = _encode_cursor(items[-1]) if has_more and items else None
     return CursorPage[RunOut](items=items, next_cursor=next_cursor, has_more=has_more)
 
 

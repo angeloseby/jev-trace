@@ -1,20 +1,22 @@
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import limiter
 from app.db.models import Attribution, Failure, Run, Step
 from app.db.session import get_session
-from app.schemas.attribution import AnalyzeResponse, AttributionOut, GraphOut, GraphEdge, GraphNode
+from app.schemas.attribution import AnalyzeResponse, AttributionOut, GraphEdge, GraphNode, GraphOut
 from app.services import jev_service
 
 router = APIRouter(tags=["attributions"])
 
 
 @router.post("/runs/{run_id}/analyze", response_model=AnalyzeResponse, status_code=202)
-async def analyze_run(run_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+@limiter.limit("10/minute")
+async def analyze_run(request: Request, run_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     run = await session.get(Run, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -81,7 +83,7 @@ async def analyze_run(run_id: uuid.UUID, session: AsyncSession = Depends(get_ses
     return AnalyzeResponse(
         run_id=run_id,
         responsible_component={"name": attr.responsible_component, "confidence": attr.component_confidence},
-        failure_step={"step_number": attr.failure_step, "confidence": attr.category_confidence},
+        failure_step={"step_number": attr.failure_step, "confidence": attr.component_confidence},
         failure_category={"name": attr.failure_category, "confidence": attr.category_confidence},
         severity=attr.severity,
         causal_graph=attr.causal_graph,

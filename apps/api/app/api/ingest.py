@@ -4,10 +4,11 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import limiter
 from app.db.models import ApiKey, Project, Run, Step
 from app.db.session import get_session
 
@@ -58,7 +59,9 @@ async def _resolve_project(session: AsyncSession, public_key: str | None, secret
 
 @router.post("/public/ingestion")
 @router.post("/v1/ingest")
+@limiter.limit("60/minute")
 async def ingest(
+    request: Request,
     payload: dict,
     session: AsyncSession = Depends(get_session),
     authorization: str | None = Header(None),
