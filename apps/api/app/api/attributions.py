@@ -23,11 +23,10 @@ async def analyze_run(request: Request, run_id: uuid.UUID, session: AsyncSession
     result = await session.execute(select(Step).where(Step.run_id == run_id).order_by(Step.step_number.asc()))
     steps = list(result.scalars().all())
 
-    # Normalize trace for Jev
-    normalized = {
-        "task": run.task_name,
-        "steps": [{"component": s.component, "status": s.status} for s in steps],
-    }
+    # Normalize trace for Jev (rich state: component+status+text+latency)
+    from jev_trace_parser.normalizer import normalize_trace
+
+    normalized = normalize_trace(run.task_name, steps)
 
     # Prefer async worker if available, with sync fallback (no Redis → still works)
     use_worker = os.getenv("USE_WORKER", "false").lower() == "true"

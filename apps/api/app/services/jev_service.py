@@ -38,14 +38,17 @@ def _choice_criteria() -> dict:
 
 
 def _category_criteria() -> dict:
+    # Taxonomy-grounded, contrastive descriptions (Who&When Pro modes in parens).
+    # Key distinctions: hallucination requires the wrong claim to be ABSENT from
+    # all observations; tool_failure requires a concrete failed call/format.
     return {
-        "planning_error": "The plan itself was wrong even if execution was correct",
-        "retrieval_error": "Failed to retrieve relevant documents or retrieved misleading ones",
-        "tool_failure": "A tool or function call failed or returned an error",
-        "memory_failure": "Failed due to lost or corrupted conversation history",
-        "hallucination": "Generated false information not grounded in retrieved context",
-        "timeout": "Execution exceeded time limit or hung",
-        "verification_failure": "Verifier did not catch or incorrectly flagged the error",
+        "planning_error": "High-level plan or orchestration was unsound: wrong task framing (R.4), bad decomposition, ineffective strategy (PL.1), or delegating a subtask to the wrong agent (C.1). Fault is in strategy, not one tool call.",
+        "retrieval_error": "Retrieval itself is the bottleneck: failed to fetch relevant documents or fetched misleading ones. Do not pick this for reasoning mistakes over correctly retrieved context.",
+        "tool_failure": "A concrete tool/action call failed: wrong arguments or malformed invocation (A.1), broken output format/syntax or unparseable code (A.2). Do NOT pick this for reasoning mistakes made with correct tool use.",
+        "memory_failure": "Lost or corrupted history or shared context: context overflow, forgotten constraints, stale info used despite updates (V.1), or context lost across agent boundaries (C.2).",
+        "hallucination": "Generated claims NOT grounded in any observation: fabricated facts absent from all tool outputs (R.1). Only pick if the wrong claim appears nowhere in the observations; grounded misapplication or local derivation bugs (R.2) and arithmetic slips (R.3) also land here only when the output is ungrounded.",
+        "timeout": "Execution ended before objectives were met: premature termination with partial results or zero tool calls (A.3), or repetitive loops with identical actions and no progress (A.4).",
+        "verification_failure": "Failed to check before answering: accepted incorrect output without verification, wrongly confirmed a bad answer (V.2), or adopted another agent's wrong answer without checking (C.3).",
     }
 
 
@@ -78,7 +81,7 @@ async def analyze_trace(normalized_trace: dict) -> dict[str, Any]:
                 state=normalized_trace,
                 questions={
                     "responsible_component": Choice(
-                        instructions="Which agent component is most responsible for the failure?",
+                        instructions="Which agent component is most responsible for the failure? If an orchestrator/planner merely relays another agent's tool output or code, attribute to the component that produced the faulty content (retriever/generator/tool_router), not the relay.",
                         criteria=_choice_criteria(),
                     ),
                     "failure_category": Choice(
