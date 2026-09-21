@@ -9,36 +9,14 @@ from typing import Any
 
 from app.core.config import settings
 
-# Exact enums from spec — do not drift
-COMPONENTS = ["planner", "retriever", "tool_router", "memory", "generator", "verifier", "external_api"]
-FAILURE_CATEGORIES = [
-    "planning_error",
-    "retrieval_error",
-    "tool_failure",
-    "memory_failure",
-    "hallucination",
-    "timeout",
-    "verification_failure",
-]
-REPAIR_ACTIONS = [
-    "increase_top_k",
-    "add_reranker",
-    "improve_embeddings",
-    "retry_api",
-    "enable_citations",
-    "human_review",
-]
+from jev_trace_schemas import COMPONENTS, FAILURE_CATEGORIES, REPAIR_ACTIONS
 DEFAULT_MODEL = os.getenv("JEV_MODEL") or os.getenv("TYPESAFE_DEFAULT_MODEL") or "jev-latest"
 
 
 def _require_api_key() -> str:
-    # Accept both JEV_* and TYPESAFE_* env names; SDK prefers TYPESAFE_API_KEY
-    key = (
-        settings.jev_api_key
-        or settings.typesafe_api_key  # type: ignore[attr-defined]
-        or os.getenv("JEV_API_KEY")
-        or os.getenv("TYPESAFE_API_KEY")
-    )
+    from app.core.config import get_jev_api_key
+
+    key = get_jev_api_key()
     if not key or not str(key).strip():
         raise RuntimeError(
             "JEV_API_KEY (or TYPESAFE_API_KEY) not set. Set it in .env (see .env.example) or environment. "

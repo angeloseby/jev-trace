@@ -1,35 +1,18 @@
-import base64
-import json
 import uuid
 from datetime import datetime, timezone
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.limiter import limiter
 from app.db.models import Run
 from app.db.session import get_session
 from app.schemas.common import CursorPage
+from app.schemas.pagination import decode_run_cursor, encode_run_cursor
 from app.schemas.run import RunComplete, RunCreate, RunOut
 
 router = APIRouter(prefix="/runs", tags=["runs"])
-
-
-def _encode_cursor(run: Run) -> str:
-    return base64.urlsafe_b64encode(json.dumps({"id": str(run.id), "ts": run.started_at.isoformat() if run.started_at else ""}).encode()).decode()
-
-
-def _decode_cursor(cursor: str | None) -> tuple[datetime | None, uuid.UUID | None]:
-    if not cursor:
-        return None, None
-    try:
-        data = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
-        ts = datetime.fromisoformat(data["ts"]) if data.get("ts") else None
-        return ts, uuid.UUID(data["id"])
-    except Exception:
-        return None, None
 
 
 @router.post("", response_model=RunOut, status_code=status.HTTP_201_CREATED)
@@ -64,20 +47,18 @@ async def list_runs(
     cursor: str | None = None,
     session: AsyncSession = Depends(get_session),
 ):
-    cur_ts, cur_id = _decode_cursor(cursor)
-    # Composite cursor: (started_at, id) for stable pagination
+    cur_ts, cur_id = decode_run_cursor(cursor)
     base = select(Run).order_by(Run.started_at.desc(), Run.id.desc())
     if status_filter:
         base = base.where(Run.status == status_filter)
     if cur_ts and cur_id:
-        # tuple comparison for cursor
         base = base.where((Run.started_at < cur_ts) | ((Run.started_at == cur_ts) & (Run.id < cur_id)))
     q = base.limit(limit + 1)
     result = await session.execute(q)
     rows = list(result.scalars().all())
     has_more = len(rows) > limit
     items = rows[:limit]
-    next_cursor = _encode_cursor(items[-1]) if has_more and items else None
+    next_cursor = encode_run_cursor(items[-1]) if has_more and items else None
     return CursorPage[RunOut](items=items, next_cursor=next_cursor, has_more=has_more)
 
 

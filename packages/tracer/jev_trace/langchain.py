@@ -52,20 +52,3 @@ class JevTraceCallbackHandler(BaseCallbackHandler):  # type: ignore
 
     def on_agent_finish(self, finish: Any, **kwargs: Any) -> None:
         pass
-
-    # LangGraph nodes: wrap StateGraph if needed
-    @staticmethod
-    def wrap_graph(graph, tracer):
-        """Wrap each LangGraph node with tracer span."""
-        orig_add_node = graph.add_node
-
-        def _wrapped(name, fn, *a, **kw):
-            def _fn(state, *args, **kwargs):
-                comp = "planner" if "plan" in name.lower() else "generator" if "llm" in name.lower() else "tool_router"
-                with tracer.span(comp, inputs={"node": name}):
-                    return fn(state, *args, **kwargs)
-
-            return orig_add_node(name, _fn, *a, **kw)
-
-        graph.add_node = _wrapped  # type: ignore
-        return graph

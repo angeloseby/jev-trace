@@ -21,32 +21,13 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jev_trace_schemas import ALIASES as COMPONENT_ALIASES, VALID_COMPONENTS
+
 from app.core.limiter import limiter
 from app.db.models import Run, Step
 from app.db.session import get_session
 
 router = APIRouter(prefix="/otlp", tags=["otlp"])
-
-COMPONENT_ALIASES = {
-    "llm": "generator",
-    "chat_model": "generator",
-    "chat": "generator",
-    "model": "generator",
-    "search": "retriever",
-    "query": "retriever",
-    "retrieval": "retriever",
-    "tool": "tool_router",
-    "agent": "planner",
-    "chain": "planner",
-    "validator": "verifier",
-    "validation": "verifier",
-    "api": "external_api",
-    "external": "external_api",
-    "memory": "memory",
-    "embedding": "retriever",
-}
-
-VALID_COMPONENTS = {"planner", "retriever", "tool_router", "memory", "generator", "verifier", "external_api"}
 
 
 def _map_component(raw: str) -> str:
@@ -57,7 +38,6 @@ def _map_component(raw: str) -> str:
         return low
     if low in COMPONENT_ALIASES:
         return COMPONENT_ALIASES[low]
-    # prefix match (e.g. "langchain_llm" → generator)
     for k, v in COMPONENT_ALIASES.items():
         if k in low:
             return v

@@ -51,15 +51,17 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+
+def get_jev_api_key() -> str | None:
+    """Centralized Jev key lookup — single source for JEV/TYPESAFE envs."""
+    return settings.jev_api_key or settings.typesafe_api_key or __import__("os").getenv("JEV_API_KEY") or __import__("os").getenv("TYPESAFE_API_KEY")
+
+
 # Fail fast if Jev key is not set — no mocking allowed for Jev
-# Accept JEV_API_KEY or TYPESAFE_API_KEY (SDK default)
-if not settings.jev_api_key and not settings.typesafe_api_key:
-    import os as _os
+if not get_jev_api_key():
+    import warnings as _w
 
-    if not _os.getenv("JEV_API_KEY") and not _os.getenv("TYPESAFE_API_KEY"):
-        import warnings as _w
-
-        _w.warn("JEV_API_KEY/TYPESAFE_API_KEY not set — Jev calls will fail (mocking disabled)", UserWarning)
+    _w.warn("JEV_API_KEY/TYPESAFE_API_KEY not set — Jev calls will fail (mocking disabled)", UserWarning)
 
 # Validate secret in production
 import os as _os2

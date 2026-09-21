@@ -105,11 +105,9 @@ async def get_graph(run_id: uuid.UUID, session: AsyncSession = Depends(get_sessi
     attr = result.scalar_one_or_none()
     if not attr:
         raise HTTPException(status_code=404, detail="Attribution not found")
-    graph = attr.causal_graph or {}
-    # Ensure default shape if Jev mock returned flat weights
-    nodes = [GraphNode(id=k, weight=float(v)) for k, v in graph.items()] if graph else []
-    # Build linear edges following step order for visualization
-    edges = []
-    for i in range(len(nodes) - 1):
-        edges.append(GraphEdge(source=nodes[i].id, target=nodes[i + 1].id))
+    from jev_trace_attribution.graph import build_graph
+
+    raw = build_graph(attr.causal_graph or {})
+    nodes = [GraphNode(id=n["id"], weight=n["weight"]) for n in raw["nodes"]]
+    edges = [GraphEdge(source=e["source"], target=e["target"]) for e in raw["edges"]]
     return GraphOut(nodes=nodes, edges=edges)

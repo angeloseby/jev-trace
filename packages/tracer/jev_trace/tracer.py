@@ -9,25 +9,30 @@ from typing import Any
 
 import httpx
 
-COMPONENTS = ["planner", "retriever", "tool_router", "memory", "generator", "verifier", "external_api"]
+try:
+    # Single source when installed in monorepo; fallback keeps PyPI package standalone
+    from jev_trace_schemas import ALIASES as _ALIASES
+    from jev_trace_schemas import COMPONENTS
+except Exception:
+    COMPONENTS = ["planner", "retriever", "tool_router", "memory", "generator", "verifier", "external_api"]
 
-_ALIASES = {
-    "llm": "generator",
-    "chat_model": "generator",
-    "chat": "generator",
-    "model": "generator",
-    "search": "retriever",
-    "query": "retriever",
-    "retrieval": "retriever",
-    "embedding": "retriever",
-    "tool": "tool_router",
-    "agent": "planner",
-    "chain": "planner",
-    "validator": "verifier",
-    "validation": "verifier",
-    "api": "external_api",
-    "external": "external_api",
-}
+    _ALIASES = {
+        "llm": "generator",
+        "chat_model": "generator",
+        "chat": "generator",
+        "model": "generator",
+        "search": "retriever",
+        "query": "retriever",
+        "retrieval": "retriever",
+        "embedding": "retriever",
+        "tool": "tool_router",
+        "agent": "planner",
+        "chain": "planner",
+        "validator": "verifier",
+        "validation": "verifier",
+        "api": "external_api",
+        "external": "external_api",
+    }
 
 
 def normalize_component(raw: str) -> str:
@@ -41,11 +46,7 @@ def normalize_component(raw: str) -> str:
     for k, v in _ALIASES.items():
         if k in low:
             return v
-    # fuzzy: closest match for UX hint
-    import difflib
-
-    m = difflib.get_close_matches(low, COMPONENTS, n=1, cutoff=0.6)
-    return m[0] if m else "tool_router"
+    return "tool_router"
 
 
 class JevTrace:
@@ -155,6 +156,13 @@ class JevTrace:
         import functools
         import inspect
 
+        def _record(comp: str, nm: str, start: float, success: bool, result: Any = None, error: Exception | None = None):
+            latency = int((time.time() - start) * 1000)
+            if success:
+                self._post_step(comp, "success", {"name": nm, "args": ""}, {"result": str(result)[:500] if result is not None else ""}, latency)
+            else:
+                self._post_step(comp, "failed", {"name": nm}, {"error": str(error) if error else ""}, latency)
+
         def decorator(fn):
             comp = component or "tool_router"
             nm = name or fn.__name__
@@ -166,31 +174,26 @@ class JevTrace:
                     start = time.time()
                     try:
                         res = await fn(*args, **kwargs)
-                        latency = int((time.time() - start) * 1000)
-                        self._post_step(comp, "success", {"name": nm, "args": str(args)[:500]}, {"result": str(res)[:500]}, latency)
+                        _record(comp, nm, start, True, res)
                         return res
                     except Exception as exc:
-                        latency = int((time.time() - start) * 1000)
-                        self._post_step(comp, "failed", {"name": nm}, {"error": str(exc)}, latency)
+                        _record(comp, nm, start, False, error=exc)
                         raise
 
                 return aw
-            else:
 
-                @functools.wraps(fn)
-                def sw(*args, **kwargs):
-                    start = time.time()
-                    try:
-                        res = fn(*args, **kwargs)
-                        latency = int((time.time() - start) * 1000)
-                        self._post_step(comp, "success", {"name": nm, "args": str(args)[:500]}, {"result": str(res)[:500]}, latency)
-                        return res
-                    except Exception as exc:
-                        latency = int((time.time() - start) * 1000)
-                        self._post_step(comp, "failed", {"name": nm}, {"error": str(exc)}, latency)
-                        raise
+            @functools.wraps(fn)
+            def sw(*args, **kwargs):
+                start = time.time()
+                try:
+                    res = fn(*args, **kwargs)
+                    _record(comp, nm, start, True, res)
+                    return res
+                except Exception as exc:
+                    _record(comp, nm, start, False, error=exc)
+                    raise
 
-                return sw
+            return sw
 
         return decorator
 

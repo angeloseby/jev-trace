@@ -36,7 +36,7 @@ result = chain.invoke({"input": "Find GDP of Brazil"}, config={"callbacks": [han
 tracer.complete("completed")
 ```
 
-For LangGraph `StateGraph`, use `JevTraceCallbackHandler.wrap_graph(graph, tracer)` to auto-span nodes.
+For LangGraph `StateGraph`, wrap each node with `tracer.span` (see `scripts/seed.py` for the pattern) or pass the same handler via `config={"callbacks": [handler]}`.
 
 ## OTel (zero-code)
 
